@@ -25,7 +25,7 @@ parser.add_argument("--n_cpu", type=int, default=2, help="number of cpu threads 
 parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
 parser.add_argument("--img_size", type=int, default=28, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=1, help="number of image channels")
-parser.add_argument("--sample_interval", type=int, default=500, help="interval betwen image samples")
+parser.add_argument("--sample_interval", type=int, default=5, help="interval betwen image samples")
 opt = parser.parse_args()
 ## opt = parser.parse_args(args=[])                 ## 在colab中运行时，换为此行
 print(opt)
@@ -186,10 +186,8 @@ for epoch in range(opt.n_epochs):                               ## epoch:50
                 "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f] [D real: %f] [D fake: %f]"
                 % (epoch, opt.n_epochs, i, len(dataloader), loss_D.item(), loss_G.item(), real_scores.data.mean(), fake_scores.data.mean())
             )
-        ## 保存训练过程中的图像
-        batches_done = epoch * len(dataloader) + i
-        if batches_done % opt.sample_interval == 0:
-            save_image(fake_img.data[:25], "./images/%d.png" % batches_done, nrow=5, normalize=True)
+        if epoch % opt.sample_interval == 0:
+            save_image(fake_img.data[:25], "./images/%d.png" % epoch, nrow=5, normalize=True)
 
 ## 保存模型
 torch.save(generator.state_dict(), './save/generator.pth')
