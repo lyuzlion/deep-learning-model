@@ -9,12 +9,6 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch
 
-# ## 创建文件夹
-# os.makedirs("./images/gan/", exist_ok=True)         ## 记录训练过程的图片效果
-# os.makedirs("./save/gan/", exist_ok=True)           ## 训练完成时模型保存的位置
-# os.makedirs("../data/mnist", exist_ok=True)      ## 下载数据集存放的位置
-
-## 超参数配置
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_epochs", type=int, default=50, help="number of epochs of training")
 parser.add_argument("--batch_size", type=int, default=64, help="size of the batches")
@@ -27,7 +21,7 @@ parser.add_argument("--img_size", type=int, default=28, help="size of each image
 parser.add_argument("--channels", type=int, default=1, help="number of image channels")
 parser.add_argument("--sample_interval", type=int, default=5, help="interval betwen image samples")
 opt = parser.parse_args()
-## opt = parser.parse_args(args=[])                 ## 在colab中运行时，换为此行
+
 print(opt)
 
 ## 图像的尺寸:(1， 28， 28),  和图像的像素面积:(784)
@@ -38,11 +32,8 @@ img_area = np.prod(img_shape)
 cuda = True if torch.cuda.is_available() else False
 
 ## mnist数据集下载
-mnist = datasets.MNIST(
-    root='../data/mnist', train=True, download=True, transform=transforms.Compose(
-            [transforms.Resize(opt.img_size), transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
-        ), 
-)
+mnist = datasets.MNIST(root='E://SDU//ComputerVision//data//mnist', train=True, download=True, transform=transforms.Compose(
+            [transforms.Resize(opt.img_size), transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]))
 
 ## 配置数据到加载器
 dataloader = DataLoader(
@@ -126,13 +117,10 @@ if torch.cuda.is_available():
 ## ----------
 ##  Training
 ## ----------
-## 进行多个epoch的训练
 for epoch in range(opt.n_epochs):                               ## epoch:50
     for i, (imgs, _) in enumerate(dataloader):                  ## imgs:(64, 1, 28, 28)     _:label(64)
         
-        ## =============================训练判别器==================
-        ## view(): 相当于numpy中的reshape，重新定义矩阵的形状, 相当于reshape(128，784)  原来是(128, 1, 28, 28)
-        imgs = imgs.view(imgs.size(0), -1)                          ## 将图片展开为28*28=784  imgs:(64, 784)
+        imgs = imgs.view(imgs.size(0), -1)                          ##  imgs:(batchsize, 784)
         real_img = Variable(imgs).cuda()                            ## 将tensor变成Variable放入计算图中，tensor变成variable之后才能进行反向传播求梯度
         real_label = Variable(torch.ones(imgs.size(0), 1)).cuda()      ## 定义真实的图片label为1
         fake_label = Variable(torch.zeros(imgs.size(0), 1)).cuda()     ## 定义假的图片的label为0
@@ -142,8 +130,8 @@ for epoch in range(opt.n_epochs):                               ## epoch:50
         ##  Train Discriminator
         ## 分为两部分：1、真的图像判别为真；2、假的图像判别为假
         ## ---------------------
-        ## 计算真实图片的损失
-        real_out = discriminator(real_img)                          ## 将真实图片放入判别器中
+        ## 计算判别器损失
+        real_out = discriminator(real_img)                          ## 64 * 1，得到每个真实样本的概率
         loss_real_D = criterion(real_out, real_label)               ## 得到真实图片的loss
         real_scores = real_out                                      ## 得到真实图片的判别值，输出的值越接近1越好
         ## 计算假的图片的损失
