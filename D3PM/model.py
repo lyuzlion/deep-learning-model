@@ -1,36 +1,34 @@
 import torch
 import torch.nn as nn
 
-
-blk = lambda ic, oc: nn.Sequential(
-    nn.Conv2d(ic, oc, 5, padding=2),
-    nn.GroupNorm(oc // 8, oc),
+blk = lambda input_channel, ouput_channel: nn.Sequential(
+    nn.Conv2d(input_channel, ouput_channel, 5, padding=2),
+    nn.GroupNorm(ouput_channel // 8, ouput_channel),
     nn.LeakyReLU(),
-    nn.Conv2d(oc, oc, 5, padding=2),
-    nn.GroupNorm(oc // 8, oc),
+    nn.Conv2d(ouput_channel, ouput_channel, 5, padding=2),
+    nn.GroupNorm(ouput_channel // 8, ouput_channel),
     nn.LeakyReLU(),
-    nn.Conv2d(oc, oc, 5, padding=2),
-    nn.GroupNorm(oc // 8, oc),
+    nn.Conv2d(ouput_channel, ouput_channel, 5, padding=2),
+    nn.GroupNorm(ouput_channel // 8, ouput_channel),
     nn.LeakyReLU(),
 )
 
-blku = lambda ic, oc: nn.Sequential(
-    nn.Conv2d(ic, oc, 5, padding=2),
-    nn.GroupNorm(oc // 8, oc),
+blku = lambda input_channel, ouput_channel: nn.Sequential(
+    nn.Conv2d(input_channel, ouput_channel, 5, padding=2),
+    nn.GroupNorm(ouput_channel // 8, ouput_channel),
     nn.LeakyReLU(),
-    nn.Conv2d(oc, oc, 5, padding=2),
-    nn.GroupNorm(oc // 8, oc),
+    nn.Conv2d(ouput_channel, ouput_channel, 5, padding=2),
+    nn.GroupNorm(ouput_channel // 8, ouput_channel),
     nn.LeakyReLU(),
-    nn.Conv2d(oc, oc, 5, padding=2),
-    nn.GroupNorm(oc // 8, oc),
+    nn.Conv2d(ouput_channel, ouput_channel, 5, padding=2),
+    nn.GroupNorm(ouput_channel // 8, ouput_channel),
     nn.LeakyReLU(),
-    nn.ConvTranspose2d(oc, oc, 2, stride=2),
-    nn.GroupNorm(oc // 8, oc),
+    nn.ConvTranspose2d(ouput_channel, ouput_channel, 2, stride=2),
+    nn.GroupNorm(ouput_channel // 8, ouput_channel),
     nn.LeakyReLU(),
 )
 
 class DummyX0Model(nn.Module):
-
     def __init__(self, n_channel: int, N: int = 16) -> None:
         super(DummyX0Model, self).__init__()
         self.down1 = blk(n_channel, 16)
@@ -120,7 +118,6 @@ class DummyX0Model(nn.Module):
             .transpose(2, -1)
             .contiguous()
         )
-
         return y
 
 
@@ -145,7 +142,6 @@ class D3PM(nn.Module):
             1 - alpha_bar[1:] / alpha_bar[:-1], torch.ones_like(alpha_bar[1:]) * 0.999
         )
 
-        # self.beta_t = [1 / (self.n_T - t + 1) for t in range(1, self.n_T + 1)]
         self.eps = 1e-6
         self.num_classses = num_classes
         q_onestep_mats = []
@@ -184,18 +180,12 @@ class D3PM(nn.Module):
         ), self.q_mats.shape
 
     def _at(self, a, t, x):
-        # t is 1-d, x is integer value of 0 to num_classes - 1
         bs = t.shape[0]
         t = t.reshape((bs, *[1] * (x.dim() - 1)))
-        # out[i, j, k, l, m] = a[t[i, j, k, l], x[i, j, k, l], m]
         return a[t - 1, x, :]
 
     def q_posterior_logits(self, x_0, x_t, t):
-        # if t == 1, this means we return the L_0 loss, so directly try to x_0 logits.
-        # otherwise, we return the L_{t-1} loss.
-        # Also, we never have t == 0.
 
-        # if x_0 is integer, we convert it to one-hot.
         if x_0.dtype == torch.int64 or x_0.dtype == torch.int32:
             x_0_logits = torch.log(
                 torch.nn.functional.one_hot(x_0, self.num_classses) + self.eps
@@ -207,16 +197,10 @@ class D3PM(nn.Module):
             f"x_0_logits.shape: {x_0_logits.shape}, x_t.shape: {x_t.shape}"
         )
 
-        # Here, we caclulate equation (3) of the paper. Note that the x_0 Q_t x_t^T is a normalizing constant, so we don't deal with that.
-
-        # fact1 is "guess of x_{t-1}" from x_t
-        # fact2 is "guess of x_{t-1}" from x_0
-
         fact1 = self._at(self.q_one_step_transposed, t, x_t)
 
         softmaxed = torch.softmax(x_0_logits, dim=-1)  # bs, ..., num_classes
         qmats2 = self.q_mats[t - 2].to(dtype=softmaxed.dtype)
-        # bs, num_classes, num_classes
         fact2 = torch.einsum("b...c,bcd->b...d", softmaxed, qmats2)
 
         out = torch.log(fact1 + self.eps) + torch.log(fact2 + self.eps)
@@ -229,7 +213,6 @@ class D3PM(nn.Module):
 
     def vb(self, dist1, dist2):
 
-        # flatten dist1 and dist2
         dist1 = dist1.flatten(start_dim=0, end_dim=-2)
         dist2 = dist2.flatten(start_dim=0, end_dim=-2)
 
@@ -247,10 +230,6 @@ class D3PM(nn.Module):
         return torch.argmax(logits + gumbel_noise, dim=-1)
 
     def model_predict(self, x_0, t, cond):
-        # this part exists because in general, manipulation of logits from model's logit
-        # so they are in form of x_0's logit might be independent to model choice.
-        # for example, you can convert 2 * N channel output of model output to logit via get_logits_from_logistic_pars
-        # they introduce at appendix A.8.
 
         predicted_x0_logits = self.x0_model(x_0, t, cond)
 
