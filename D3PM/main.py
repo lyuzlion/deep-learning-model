@@ -29,7 +29,7 @@ if __name__ == "__main__":
             ]
         ),
     )
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=16)
+    dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=16)
     optim = torch.optim.AdamW(d3pm.x0_model.parameters(), lr=1e-3)
     d3pm.train()
     n_epoch = 400

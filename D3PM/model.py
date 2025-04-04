@@ -37,7 +37,7 @@ N' = (N − kernel + 2 × padding) / stride + 1
 反卷积
 N' = (N − 1) × stride + kernel − 2 × padding + outputpadding
 '''
-class DummyX0Model(nn.Module):
+class DummyX0Model(nn.Module): # 类似 U-Net，用来将 x_t 变成 x_0
     def __init__(self, n_channel: int, N: int = 16) -> None:
         super(DummyX0Model, self).__init__()
         self.down1 = blk(n_channel, 16)
@@ -77,7 +77,7 @@ class DummyX0Model(nn.Module):
         ] # 32 个 256*1 的向量
         tx = torch.cat(t_features, dim=1).to(x.device) # 向右拼接，[256, 32]
 
-        t_emb_1 = self.temb_1(tx).unsqueeze(-1).unsqueeze(-1) # [256, 16, 1, 1]
+        t_emb_1 = self.temb_1(tx).unsqueeze(-1).unsqueeze(-1) # [256, 16, 1, 1]，时间嵌入，不然只有一个模型没法区别不同时刻的图像
         t_emb_2 = self.temb_2(tx).unsqueeze(-1).unsqueeze(-1)
         t_emb_3 = self.temb_3(tx).unsqueeze(-1).unsqueeze(-1)
         t_emb_4 = self.temb_4(tx).unsqueeze(-1).unsqueeze(-1)
@@ -93,40 +93,21 @@ class DummyX0Model(nn.Module):
         x2 = self.down2(nn.functional.avg_pool2d(input=x1, kernel_size=2)) + t_emb_2 + cond_emb_2 # [256, 32, 16, 16]
         x3 = self.down3(nn.functional.avg_pool2d(input=x2, kernel_size=2)) + t_emb_3 + cond_emb_3 # [256, 64, 8, 8]
         x4 = self.down4(nn.functional.avg_pool2d(input=x3, kernel_size=2)) + t_emb_4 + cond_emb_4 # [256, 512, 4, 4]
-        x5 = self.down5(nn.functional.avg_pool2d(input=x4, kernel_size=2))
+        x5 = self.down5(nn.functional.avg_pool2d(input=x4, kernel_size=2)) # [256, 512, 2, 2]
 
-        x5 = (
-            self.tr1(x5.reshape(x5.shape[0], x5.shape[1], -1).transpose(1, 2))
-            .transpose(1, 2)
-            .reshape(x5.shape)
-        ) # [256, 512, 2, 2]
+        x5 = self.tr1(x5.reshape(x5.shape[0], x5.shape[1], -1).transpose(1, 2)).transpose(1, 2).reshape(x5.shape) # [256, 512, 2, 2]
 
-        y = self.up1(x5) + cond_emb_5
-
-        y = (
-            self.tr2(y.reshape(y.shape[0], y.shape[1], -1).transpose(1, 2))
-            .transpose(1, 2)
-            .reshape(y.shape)
-        )
-
-        y = self.up2(torch.cat([x4, y], dim=1)) + cond_emb_6
-
-        y = (
-            self.tr3(y.reshape(y.shape[0], y.shape[1], -1).transpose(1, 2))
-            .transpose(1, 2)
-            .reshape(y.shape)
-        )
-        y = self.up3(y)
-        y = self.up4(y)
-        y = self.convlast(y)
-        y = self.final(y)
+        y = self.up1(x5) + cond_emb_5 # [256, 512, 4, 4]
+        y = self.tr2(y.reshape(y.shape[0], y.shape[1], -1).transpose(1, 2)).transpose(1, 2).reshape(y.shape)
+        y = self.up2(torch.cat([x4, y], dim=1)) + cond_emb_6 # U-Net 的跳跃连接  [256, 64, 8, 8]
+        y = self.tr3(y.reshape(y.shape[0], y.shape[1], -1).transpose(1, 2)).transpose(1, 2).reshape(y.shape)
+        y = self.up3(y)  # [256, 32, 16, 16]
+        y = self.up4(y)  # [256, 16, 32, 32]
+        y = self.convlast(y)  # [256, 16, 32, 32]
+        y = self.final(y)  # [256, 2, 32, 32]
 
         # reshape to B, C, H, W, N
-        y = (
-            y.reshape(y.shape[0], -1, self.N, *x.shape[2:])
-            .transpose(2, -1)
-            .contiguous()
-        )
+        y = y.reshape(y.shape[0], -1, self.N, *x.shape[2:]).transpose(2, -1).contiguous()
         return y # [256, 1, 32, 32, 2]
 
 
@@ -147,9 +128,7 @@ class D3PM(nn.Module):
 
         steps = torch.arange(n_T + 1, dtype=torch.float64) / n_T
         alpha_bar = torch.cos((steps + 0.008) / 1.008 * torch.pi / 2)
-        self.beta_t = torch.minimum(
-            1 - alpha_bar[1:] / alpha_bar[:-1], torch.ones_like(alpha_bar[1:]) * 0.999
-        )
+        self.beta_t = torch.minimum(1 - alpha_bar[1:] / alpha_bar[:-1], torch.ones_like(alpha_bar[1:]) * 0.999)
 
         self.eps = 1e-6
         self.num_classses = num_classes
@@ -157,7 +136,6 @@ class D3PM(nn.Module):
         q_mats = []  # these are cumulative
 
         for beta in self.beta_t:
-
             if forward_type == "uniform":
                 mat = torch.ones(num_classes, num_classes) * beta / num_classes
                 mat.diagonal().fill_(1 - (num_classes - 1) * beta / num_classes)
@@ -166,9 +144,7 @@ class D3PM(nn.Module):
                 raise NotImplementedError
         q_one_step_mats = torch.stack(q_onestep_mats, dim=0)
 
-        q_one_step_transposed = q_one_step_mats.transpose(
-            1, 2
-        )  # this will be used for q_posterior_logits
+        q_one_step_transposed = q_one_step_mats.transpose(1, 2)  # this will be used for q_posterior_logits
 
         q_mat_t = q_onestep_mats[0]
         q_mats = [q_mat_t]
@@ -196,15 +172,11 @@ class D3PM(nn.Module):
     def q_posterior_logits(self, x_0, x_t, t):
 
         if x_0.dtype == torch.int64 or x_0.dtype == torch.int32:
-            x_0_logits = torch.log(
-                torch.nn.functional.one_hot(x_0, self.num_classses) + self.eps
-            )
+            x_0_logits = torch.log(torch.nn.functional.one_hot(x_0, self.num_classses) + self.eps)
         else:
             x_0_logits = x_0.clone()
 
-        assert x_0_logits.shape == x_t.shape + (self.num_classses,), print(
-            f"x_0_logits.shape: {x_0_logits.shape}, x_t.shape: {x_t.shape}"
-        )
+        assert x_0_logits.shape == x_t.shape + (self.num_classses,), print(f"x_0_logits.shape: {x_0_logits.shape}, x_t.shape: {x_t.shape}")
 
         fact1 = self._at(self.q_one_step_transposed, t, x_t)
 
@@ -225,10 +197,7 @@ class D3PM(nn.Module):
         dist1 = dist1.flatten(start_dim=0, end_dim=-2)
         dist2 = dist2.flatten(start_dim=0, end_dim=-2)
 
-        out = torch.softmax(dist1 + self.eps, dim=-1) * (
-            torch.log_softmax(dist1 + self.eps, dim=-1)
-            - torch.log_softmax(dist2 + self.eps, dim=-1)
-        )
+        out = torch.softmax(dist1 + self.eps, dim=-1) * (torch.log_softmax(dist1 + self.eps, dim=-1) - torch.log_softmax(dist2 + self.eps, dim=-1))
         return out.sum(dim=-1).mean()
 
     def q_sample(self, x_0, t, noise):
@@ -246,9 +215,7 @@ class D3PM(nn.Module):
         x is one-hot of dim (bs, ...), with int values of 0 to num_classes - 1
         """
         t = torch.randint(1, self.n_T, (x.shape[0],), device=x.device) # [256]，每个数都是1到n_T-1之间的随机数
-        x_t = self.q_sample(
-            x, t, torch.rand((*x.shape, self.num_classses), device=x.device)
-        ) # [256, 1, 32, 32]，得到 t 时刻的图像
+        x_t = self.q_sample(x, t, torch.rand((*x.shape, self.num_classses), device=x.device)) # [256, 1, 32, 32]，得到 t 时刻的图像
         # x_t is same shape as x
         assert x_t.shape == x.shape, print(
             f"x_t.shape: {x_t.shape}, x.shape: {x.shape}"
@@ -275,7 +242,6 @@ class D3PM(nn.Module):
         }
 
     def p_sample(self, x, t, cond, noise):
-
         predicted_x0_logits = self.model_predict(x, t, cond)
         pred_q_posterior_logits = self.q_posterior_logits(predicted_x0_logits, x, t)
 
@@ -284,18 +250,13 @@ class D3PM(nn.Module):
         not_first_step = (t != 1).float().reshape((x.shape[0], *[1] * (x.dim())))
 
         gumbel_noise = -torch.log(-torch.log(noise))
-        sample = torch.argmax(
-            pred_q_posterior_logits + gumbel_noise * not_first_step, dim=-1
-        )
+        sample = torch.argmax(pred_q_posterior_logits + gumbel_noise * not_first_step, dim=-1)
         return sample
 
     def sample(self, x, cond=None):
         for t in reversed(range(1, self.n_T)):
             t = torch.tensor([t] * x.shape[0], device=x.device)
-            x = self.p_sample(
-                x, t, cond, torch.rand((*x.shape, self.num_classses), device=x.device)
-            )
-
+            x = self.p_sample(x, t, cond, torch.rand((*x.shape, self.num_classses), device=x.device))
         return x
 
     def sample_with_image_sequence(self, x, cond=None, stride=10):
@@ -303,9 +264,7 @@ class D3PM(nn.Module):
         images = []
         for t in reversed(range(1, self.n_T)):
             t = torch.tensor([t] * x.shape[0], device=x.device)
-            x = self.p_sample(
-                x, t, cond, torch.rand((*x.shape, self.num_classses), device=x.device)
-            )
+            x = self.p_sample(x, t, cond, torch.rand((*x.shape, self.num_classses), device=x.device))
             steps += 1
             if steps % stride == 0:
                 images.append(x)
@@ -313,5 +272,4 @@ class D3PM(nn.Module):
         # if last step is not divisible by stride, we add the last image.
         if steps % stride != 0:
             images.append(x)
-
         return images
