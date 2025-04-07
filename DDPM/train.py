@@ -39,6 +39,9 @@ l = len(dataloader)
 ema = EMA(0.995)
 ema_model = copy.deepcopy(model).eval().requires_grad_(False)
 
+if not os.path.exists(args.save_path):
+    os.makedirs(args.save_path)
+
 for epoch in range(args.epochs):
     logging.info(f"Starting epoch {epoch}:")
     pbar = tqdm(dataloader)
