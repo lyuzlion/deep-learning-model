@@ -25,7 +25,7 @@ args.num_classes = 10
 args.dataset_path = r"/home/liuzilong/data/liuzilong/animals10"
 args.device = "cuda"
 args.lr = 3e-4
-args.save_path = "/home/liuzilong/data/liuzilong/checkpoints/DDPM"
+args.save_path = "/home/liuzilong/data/liuzilong/checkpoints/DDPM/"
 
 setup_logging()
 device = args.device
@@ -43,10 +43,10 @@ for epoch in range(args.epochs):
     logging.info(f"Starting epoch {epoch}:")
     pbar = tqdm(dataloader)
     for i, (images, labels) in enumerate(pbar):
-        images = images.to(device)
-        labels = labels.to(device)
-        t = diffusion.sample_timesteps(images.shape[0]).to(device)
-        x_t, noise = diffusion.noise_images(images, t)
+        images = images.to(device) # [16, 3, 64, 64]
+        labels = labels.to(device) # [16]
+        t = diffusion.sample_timesteps(images.shape[0]).to(device) # [16]
+        x_t, noise = diffusion.noise_images(images, t) # [16, 3, 64, 64], [16, 3, 64, 64]
         if np.random.random() < 0.1:
             labels = None
         predicted_noise = model(x_t, t, labels)
@@ -67,6 +67,6 @@ for epoch in range(args.epochs):
         plot_images(sampled_images)
         save_images(sampled_images, os.path.join("results", f"{epoch}.jpg"))
         save_images(ema_sampled_images, os.path.join("results", f"{epoch}_ema.jpg"))
-        torch.save(model.state_dict(), os.path.join(args.save_path, f"ckpt.pt"))
-        torch.save(ema_model.state_dict(), os.path.join(args.save_path, f"ema_ckpt.pt"))
-        torch.save(optimizer.state_dict(), os.path.join(args.save_path, f"optim.pt"))
+        torch.save(model.state_dict(), args.save_path + "ckpt.pt")
+        torch.save(ema_model.state_dict(), args.save_path + "ema_ckpt.pt")
+        torch.save(optimizer.state_dict(), args.save_path + "optim.pt")
