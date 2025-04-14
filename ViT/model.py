@@ -44,7 +44,7 @@ class PatchEmbed(nn.Module):
     2D Image to Patch Embedding
     """
 
-    def __init__(self, image_size=224, patch_size=16, in_c=3, embed_dim=768, norm_layer=None):
+    def __init__(self, image_size=224, patch_size=16, in_c=3, embed_dim=768):
         """
         Map input tensor to patch.
         Args:
