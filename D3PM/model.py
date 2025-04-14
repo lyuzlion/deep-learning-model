@@ -30,7 +30,7 @@ blku = lambda input_channel, ouput_channel: nn.Sequential(
     nn.ConvTranspose2d(ouput_channel, ouput_channel, 2, stride=2),
     nn.GroupNorm(ouput_channel // 8, ouput_channel),
     nn.LeakyReLU(),
-)
+) # blku的全称是block up，表示上采样的块。它的作用是将输入的特征图进行上采样，并通过卷积和归一化操作来提取特征。它通常用于生成模型中的解码器部分，以逐步恢复图像的空间分辨率。
 '''
 卷积
 N' = (N − kernel + 2 × padding) / stride + 1
