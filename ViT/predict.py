@@ -11,7 +11,7 @@ import os
 import torch
 from PIL import Image
 
-from dataloader import data_transform
+from utils import data_transform
 from utils import create_model, model_parallel
 from config import args
 

@@ -9,8 +9,7 @@ import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.tensorboard import SummaryWriter
 
 from config import args
-from dataloader import get_data_loader
-from utils import remove_dir_and_create_dir, create_model, model_parallel, set_seed
+from utils import remove_dir_and_create_dir, create_model, model_parallel, set_seed, get_data_loader
 
 
 device = 'cuda'
@@ -67,12 +66,12 @@ for epoch in range(args.epochs):
     train_bar = tqdm(train_loader)
     for images, labels in train_bar:
         train_bar.set_description("epoch {}".format(epoch))
-        images = images.to(device)
-        labels = labels.to(device)
+        images = images.to(device) # [B, 3, 224, 224]
+        labels = labels.to(device) # [B]
 
         optimizer.zero_grad()
-        logits = model(images)
-        prediction = torch.max(logits, dim=1)[1]
+        logits = model(images) # [B, num_classes]
+        prediction = torch.max(logits, dim=1)[1] # [B]
 
         loss = loss_function(logits, labels)
         loss.backward()

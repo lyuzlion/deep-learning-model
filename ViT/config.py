@@ -10,8 +10,8 @@ import os
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--num_classes', type=int, default=5)
-parser.add_argument('--epochs', type=int, default=30)
+parser.add_argument('--num_classes', type=int, default=6)
+parser.add_argument('--epochs', type=int, default=50)
 parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--lrf', type=float, default=0.01)
@@ -31,7 +31,7 @@ parser.add_argument('--weights', type=str,
 
 # 是否冻结权重
 parser.add_argument('--freeze_layers', type=bool, default=True)
-parser.add_argument('--gpu', type=str, default='2,3', help='Select gpu device.')
+parser.add_argument('--gpu', type=str, default='3', help='Select gpu device.')
 
 parser.add_argument('--model', type=str, default='vit_base_patch16_224', help='The name of ViT model, Select one to train.')
 parser.add_argument('--label_name', type=list, default=[

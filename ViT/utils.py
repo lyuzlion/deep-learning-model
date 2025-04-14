@@ -24,15 +24,15 @@ def set_seed(seed):
 
 def create_model(args):
     if args.model == "vit_base_patch16_224":
-        model = vit_base_patch16_224_in21k(args.num_classes, has_logits=False)
+        model = vit_base_patch16_224_in21k(args.num_classes)
     elif args.model == "vit_base_patch32_224":
-        model = vit_base_patch32_224_in21k(args.num_classes, has_logits=False)
+        model = vit_base_patch32_224_in21k(args.num_classes)
     elif args.model == "vit_large_patch16_224":
-        model = vit_large_patch16_224_in21k(args.num_classes, has_logits=False)
+        model = vit_large_patch16_224_in21k(args.num_classes)
     elif args.model == "vit_large_patch32_224":
-        model = vit_large_patch32_224_in21k(args.num_classes, has_logits=False)
+        model = vit_large_patch32_224_in21k(args.num_classes)
     elif args.model == "vit_huge_patch14_224":
-        model = vit_huge_patch14_224_in21k(args.num_classes, has_logits=False)
+        model = vit_huge_patch14_224_in21k(args.num_classes)
     else:
         raise Exception("Can't find any model name call {}".format(args.model))
 
