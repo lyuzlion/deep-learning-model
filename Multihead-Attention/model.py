@@ -1,102 +1,64 @@
 import torch
 import torch.nn as nn
 
-class Multihead_Attention(nn.Module):
-    """
-    multihead_attention
-    根据<https://www.github.com/kyubyong/transformer>修改
-    1.split+cat
-    2.matmul(q,k)
-    3.mask k
-    4.softmax
-    5.mask q
-    6.matmul(attn,v)
-    7.split+cat
-    8.res q
-    9.norm
-    """
+class MultiheadAttention(nn.Module):
+    # n_heads：多头注意力的数量
+    # hid_dim：每个词输出的向量维度
+    def __init__(self, hid_dim, n_heads, dropout):
+        super(MultiheadAttention, self).__init__()
+        self.hid_dim = hid_dim
+        self.n_heads = n_heads
+        # 强制 hid_dim 必须整除 h
+        assert hid_dim % n_heads == 0
 
-    def __init__(self,
-                 hidden_dim,
-                 C_q=None,
-                 C_k=None,
-                 C_v=None,
-                 num_heads=1,
-                 dropout_rate=0.0):
-        super(Multihead_Attention, self).__init__()
-        self.hidden_dim = hidden_dim
-        C_q = C_q if C_q else hidden_dim
-        C_k = C_k if C_k else hidden_dim
-        C_v = C_v if C_v else hidden_dim
-        self.linear_Q = nn.Linear(C_q, hidden_dim)
-        self.linear_K = nn.Linear(C_k, hidden_dim)
-        self.linear_V = nn.Linear(C_v, hidden_dim)
-        self.num_heads = num_heads
-        self.norm = nn.LayerNorm(hidden_dim)
-        self.dropout = nn.Dropout(p=dropout_rate)
+        self.wq = nn.Linear(hid_dim, hid_dim)
+        self.wk = nn.Linear(hid_dim, hid_dim)
+        self.wv = nn.Linear(hid_dim, hid_dim)
+        self.fc = nn.Linear(hid_dim, hid_dim)
+        self.do = nn.Dropout(dropout)
+        self.scale = torch.sqrt(torch.FloatTensor([hid_dim // n_heads]))
 
-    def forward(self,
-                Q, K, V):
-        """
-        :param Q: A 3d tensor with shape of [N, T_q, C_q]
-        :param K: A 3d tensor with shape of [N, T_k, C_k]
-        :param V: A 3d tensor with shape of [N, T_v, C_v]
-        :return:
-        """
-        num_heads = self.num_heads
-        N = Q.size()[0]
+    def forward(self, query, key, value, mask=None):
+        # Q: [64,12,300], batch_size 为 64，有 12 个词，每个词的 Query 向量是 300 维
+        # K: [64,10,300], batch_size 为 64，有 10 个词，每个词的 Query 向量是 300 维
+        # V: [64,10,300], batch_size 为 64，有 10 个词，每个词的 Query 向量是 300 维
+        bsz = query.shape[0]
+        Q = self.wq(query)
+        K = self.wk(key)
+        V = self.wv(value)
 
-        # Linear projections
-        Q_l = nn.ReLU()(self.linear_Q(Q))
-        K_l = nn.ReLU()(self.linear_K(K))
-        V_l = nn.ReLU()(self.linear_V(V))
+        Q = Q.view(bsz, -1, self.n_heads, self.hid_dim // self.n_heads).permute(0, 2, 1, 3)
+        K = K.view(bsz, -1, self.n_heads, self.hid_dim // self.n_heads).permute(0, 2, 1, 3)
+        V = V.view(bsz, -1, self.n_heads, self.hid_dim // self.n_heads).permute(0, 2, 1, 3)
 
-        # Split and concat
-        Q_split = Q_l.split(split_size=self.hidden_dim // num_heads, dim=2)
-        K_split = K_l.split(split_size=self.hidden_dim // num_heads, dim=2)
-        V_split = V_l.split(split_size=self.hidden_dim // num_heads, dim=2)
+        # 第 1 步：Q 乘以 K 的转置，除以scale
+        # [64,6,12,50] * [64,6,50,10] = [64,6,12,10]
+        # attention：[64,6,12,10]
+        attention = torch.matmul(Q, K.permute(0, 1, 3, 2)) / self.scale
 
-        Q_ = torch.cat(Q_split, dim=0)  # (h*N, T_q, C/h)
-        K_ = torch.cat(K_split, dim=0)  # (h*N, T_k, C/h)
-        V_ = torch.cat(V_split, dim=0)  # (h*N, T_v, C/h)
+        # 把 mask 不为空，那么就把 mask 为 0 的位置的 attention 分数设置为 -1e10
+        if mask is not None:
+            attention = attention.masked_fill(mask == 0, -1e10)
 
-        # Multiplication
-        outputs = torch.bmm(Q_, K_.transpose(2, 1))
+        # 第 2 步：计算上一步结果的 softmax，再经过 dropout，得到 attention。
+        # 注意，这里是对最后一维做 softmax，也就是在输入序列的维度做 softmax
+        # attention: [64,6,12,10]
+        attention = self.do(torch.softmax(attention, dim=-1))
 
-        # Scale
-        outputs = outputs / (K_.size()[-1] ** 0.5)
+        # 第三步，attention结果与V相乘，得到多头注意力的结果
+        # [64,6,12,10] * [64,6,10,50] = [64,6,12,50]
+        # x: [64,6,12,50]
+        x = torch.matmul(attention, V)
+        x = x.permute(0, 2, 1, 3).contiguous()
+        x = x.view(bsz, -1, self.hid_dim)
+        x = self.fc(x)
+        return x
 
-        # Key Masking
-        key_masks = torch.sign(torch.abs(K).sum(dim=-1))  # (N, T_k)
-        key_masks = key_masks.repeat(num_heads, 1)  # (h*N, T_k)
-        key_masks = key_masks.unsqueeze(1).repeat(1, Q.size()[1], 1)  # (h*N, T_q, T_k)
 
-        paddings = torch.ones_like(key_masks) * (-2 ** 32 + 1)
-        outputs = torch.where(torch.eq(key_masks, 0), paddings, outputs)  # (h*N, T_q, T_k)
-
-        # Activation
-        outputs = nn.Softmax(dim=2)(outputs)  # (h*N, T_q, T_k)
-
-        # Query Masking
-        query_masks = torch.sign(torch.abs(Q).sum(dim=-1))  # (N, T_q)
-        query_masks = query_masks.repeat(num_heads, 1)  # (h*N, T_q)
-        query_masks = query_masks.unsqueeze(-1).repeat(1, 1, K.size()[1])  # (h*N, T_q, T_k)
-        outputs = outputs * query_masks  # broadcasting. (h*N, T_q, T_k)
-
-        # Dropouts
-        outputs = self.dropout(outputs)
-
-        # Weighted sum
-        outputs = torch.bmm(outputs, V_)  # ( h*N, T_q, C/h)
-
-        # Restore shape
-        outputs = outputs.split(N, dim=0)  # (N, T_q, C)
-        outputs = torch.cat(outputs, dim=2)
-
-        # Residual connection
-        outputs = outputs + Q_l
-
-        # Normalize
-        outputs = self.norm(outputs)  # (N, T_q, C)
-
-        return outputs
+query = torch.rand(64, 12, 300)
+key = torch.rand(64, 10, 300)
+value = torch.rand(64, 10, 300)
+attention = MultiheadAttention(hid_dim=300, n_heads=6, dropout=0.1)
+output = attention(query, key, value)
+## output: torch.Size([64, 12, 300])
+print(output.shape)
